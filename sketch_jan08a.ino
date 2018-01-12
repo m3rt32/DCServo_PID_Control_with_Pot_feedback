@@ -1,4 +1,4 @@
-double setPoint=585;
+double setPoint=555;
 double girisSinyali,cikisSinyali;
 double toplamHata,sonHata;
 double kp,ki,kd;
@@ -59,9 +59,20 @@ int old_x, old_y, new_x, new_y, x=0;
 float value;
 unsigned char flag=0;
 ////CODE BEGIN
+enum Mode{
+  None,
+  PControl,
+  PIControl,
+  PDControl,
+  PIDControl,
+  Manual
+};
+Mode mode = 0;
+int modeSwitch=4;
+bool autoControl=false;
 void setup() {
   myGLCD.InitLCD();   //LCD ekranı başlatıyoruz
- myGLCD.drawBitmap(0, 0, arduino_logo, 84, 48);    //Arduino logosunu ekrana çizdiriyoruz
+ myGLCD.drawBitmap(0, 0, arduino_logo, 84, 48);    //Logo cizdirelim
  myGLCD.update();
   delay(2000);
   myGLCD.clrScr();
@@ -89,11 +100,43 @@ void setup() {
   pinMode(MOTORA,OUTPUT);
   pinMode(MOTORB,OUTPUT);
   pinMode(A0,INPUT);
+  pinMode(A1,INPUT);
+  pinMode(A2,INPUT);
+  pinMode(A3,INPUT);
+  pinMode(modeSwitch,INPUT);
   last_time = millis();
   
 }
 
 void loop() {
+  if(digitalRead(modeSwitch)==HIGH){
+    delay(100);
+    if(mode==0)
+     {
+      autoControl=true;
+      myGLCD.print("OTOMATIK MOD",CENTER,0);
+      myGLCD.print("KONTROL YOK",CENTER,10);
+     }else if(mode==1){
+      myGLCD.print("P KONTROL",CENTER,0);
+     }else if(mode==2){
+      myGLCD.print("PI KONTROL",CENTER,0);
+     }else if(mode==3){
+      myGLCD.print("PD KONTROL",CENTER,0);
+     }else if(mode==4){
+      myGLCD.print("PID KONTROL",CENTER,0);
+     }else if(mode==5){
+      autoControl=false;
+      myGLCD.print("MANUEL MOD",CENTER,0);
+      myGLCD.update();
+      delay(1000);
+      mode=0;
+      return;
+     }
+     mode=mode+1;
+     myGLCD.update();
+     delay(1000);
+     return;
+  }
  if(Serial.available()) 
   {
     girilen_deger=Serial.read(); //char char okur
@@ -107,15 +150,16 @@ void loop() {
        konum=konum+String(girilen_deger);
      }
   }
-  // put your main code here, to run repeatedly:
 girisSinyali = analogRead(A0);
 double error = Pid_Hesapla();
  double fark = setPoint-girisSinyali;
+ double check = analogRead(A0);
+ Serial.println(check);
 if(millis()-last_time>5){ //print the signal in every 5ms
 
 }
 
-if(abs(error)<0.3){
+if(abs(error)<0.5){
   toplamHata=0;
   sonHata=0;
   digitalWrite(MOTOR_ENABLE,LOW);
@@ -134,19 +178,54 @@ else if(error<threshold){
   digitalWrite(MOTORB,LOW);
   digitalWrite(MOTORA,HIGH);
 }
-double pVal = analogRead(A1);
-double iVal = analogRead(A2);
-double dVal = analogRead(A3);
-dVal = map(dVal,0,1023,0,60);
-if(iVal<500 && iVal>200){
-  iVal = 0.000001;
-}else if(iVal>=500){
-  iVal=100;
+//pid oku
+double pVal;
+double iVal;
+double dVal;
+if(!autoControl){
+  pVal = analogRead(A1);
+  iVal = analogRead(A2);
+  dVal = analogRead(A3);
+  dVal = map(dVal,0,1023,0,60);
+  if(iVal<500 && iVal>200){
+    iVal = 0;
+  }else if(iVal>=500){
+    iVal=100;
+  }else{
+    iVal =0.000001;
+  }
+  pid_set(pVal/20000,iVal,dVal);
 }else{
-  iVal =0;
+  switch(mode){
+    case 1:
+      pVal=0;
+      iVal=0;
+      dVal=0;
+      break;
+    case 2:
+      pVal=0.1;
+      iVal=0;
+      dVal=0;
+      break;
+     case 3:
+      pVal=0.1;
+      iVal=0.000001;
+      dVal=0;
+      break;
+      case 4:
+      pVal=0.01;
+      iVal=0;
+      dVal=5;
+      break;
+      case 5:
+      pVal=0.1;
+      iVal=0;
+      dVal=30;
+      break;
+  }
+  pid_set(pVal,iVal,dVal);
 }
-pid_set(pVal/20000,iVal,dVal);
-
+//Grafik cizdir
 int setPointGraph = map(setPoint-threshold,0,1023,46,1);
 myGLCD.drawLine(0,setPointGraph,84,setPointGraph);
 if (flag == 0)
